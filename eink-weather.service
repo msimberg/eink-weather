@@ -1,0 +1,14 @@
+[Unit]
+Description=Update eink screen with time and weather.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment="EINK_WEATHER_PIRATEWEATHER_KEY="
+Environment="EINK_WEATHER_PIRATEWEATHER_LOCATION="
+ExecStart=/path/to/eink-weather.sh 5
+Restart=on-failure
+RestartSec=60s
+
+[Install]
+WantedBy=default.target

@@ -80,7 +80,7 @@ while true; do
 		-fill ${foreground_color} \
 		-font "Iosevka-Bold" \
 		-size 600x60 \
-		label:"${pirateweather_current_temperature}° ${pirateweather_daily_summary}" \
+		label:"${pirateweather_current_temperature}° ${pirateweather_hourly_summary}" \
 		-geometry +0+280 \
 		-compose over -composite \
 		bmp:${temp_image}

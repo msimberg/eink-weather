@@ -45,6 +45,14 @@ wmo_codes["99"]="Thunderstorms with hail"
 background_color="white"
 foreground_color="black"
 
+function no_negative_zero {
+	if [[ "${1}" == "-0" ]]; then
+		echo "0"
+	else
+		echo "${1}"
+	fi
+}
+
 # Get the time.
 time=$(date +"%H:%M")
 
@@ -71,8 +79,8 @@ n_hours=$((24 * 7))
 rectangles=""
 precipitation=( $(echo ${openmeteo_json} | jq '.hourly.precipitation[]') )
 for i in $(seq 0 $((n_hours - 1))); do
-	precip_intensity=${precipitation[$i]} # $(echo ${precipitation} | jq ".[${i}]")
-	bar_top=$(echo "scale=5; 448 - ($precip_intensity * 10)" | bc)
+	precip_intensity=${precipitation[$i]}
+	bar_top=$(echo "scale=5; 448 - ($precip_intensity * 20)" | bc)
 	bar_left=$(echo "scale=5; $i * (600 / $n_hours)" | bc)
 	bar_bottom=448
 	bar_right=$(echo "scale=5; $bar_left + (600 / $n_hours)" | bc)
@@ -84,8 +92,6 @@ convert \
 	-size 600x448 \
 	xc:transparent \
 	-fill ${foreground_color} \
-	-stroke ${background_color} \
-	-strokewidth 1.0 \
 	-draw "${rectangles}" \
 	-compose over -composite \
 	bmp:${temp_image}
@@ -127,52 +133,53 @@ convert \
 	-fill ${foreground_color} \
 	-font "Iosevka-Bold" \
 	-size 600x60 \
-	label:"${openmeteo_current_temperature}° ${openmeteo_current_summary}" \
+	label:"$(no_negative_zero ${openmeteo_current_temperature})° ${openmeteo_current_summary}" \
 	-geometry +0+280 \
 	-compose over -composite \
 	bmp:${temp_image}
 
 # Weekly weather.
-weekdays=$(echo ${openmeteo_json} | jq '.daily.time[]' | head -n 7 |  xargs -I '{}' date --date='{}' +'   %a' | tr -d '\n' | sed 's|^   ||')
-convert \
-	${temp_image} \
-	+antialias \
-	-background none \
-	-gravity north \
-	-fill ${foreground_color} \
-	-font "Iosevka-Bold" \
-	-size 600x36 \
-	label:"\\${weekdays}" \
-	-geometry +0+340 \
-	-compose over -composite \
-	bmp:${temp_image}
-
-weekday_temperatures_high=$(echo ${openmeteo_json} | jq '.daily.apparent_temperature_max[]' | head -n 7 |  xargs -I '{}' printf '%6.0f' '{}' | tr -d '\n' | sed 's|^   ||')
-convert \
-	${temp_image} \
-	+antialias \
-	-background none \
-	-gravity north \
-	-fill ${foreground_color} \
-	-font "Iosevka-Bold" \
-	-size 600x36 \
-	label:"\\${weekday_temperatures_high}" \
-	-geometry +0+370 \
-	-compose over -composite \
-	bmp:${temp_image}
-weekday_temperatures_low=$(echo ${openmeteo_json} | jq '.daily.apparent_temperature_min[]' | head -n 7 |  xargs -I '{}' printf '%6.0f' '{}' | tr -d '\n' | sed 's|^   ||')
-convert \
-	${temp_image} \
-	+antialias \
-	-background none \
-	-gravity north \
-	-fill ${foreground_color} \
-	-font "Iosevka-Bold" \
-	-size 600x36 \
-	label:"\\${weekday_temperatures_low}" \
-	-geometry +0+400 \
-	-compose over -composite \
-	bmp:${temp_image}
+n_days=7
+weekdays=$(echo ${openmeteo_json} | jq ".daily.time[:${n_days}]")
+weekday_temperatures_high=$(echo ${openmeteo_json} | jq ".daily.apparent_temperature_max[:${n_days}]")
+weekday_temperatures_low=$(echo ${openmeteo_json} | jq ".daily.apparent_temperature_min[:${n_days}]")
+for i in $(seq 0 $((n_days - 1))); do
+	set -x
+	box_top=340
+	box_left=$(echo "scale=5; $i * (600 / $n_days) - 300 + (600 / $n_days) / 2" | bc)
+	box_size_y=80
+	box_size_x=$(echo "scale=5; (600 / $n_days)" | bc)
+	day=$(echo ${weekdays} | jq ".[${i}]" |  xargs -I '{}' date --date='{}' +'%a')
+	temperature_high=$(no_negative_zero $(echo ${weekday_temperatures_high} | jq ".[${i}]" | xargs -I '{}' printf '%.0f' '{}'))
+	temperature_low=$(no_negative_zero $(echo ${weekday_temperatures_low} | jq ".[${i}]" | xargs -I '{}' printf '%.0f' '{}'))
+	convert \
+		${temp_image} \
+		+antialias \
+		-background none \
+		-gravity north \
+		-fill ${foreground_color} \
+		-pointsize 26 \
+		-font "Iosevka-Bold" \
+		-size ${box_size_x}x${box_size_y} \
+		label:"\\${day}\n${temperature_high}/${temperature_low}" \
+		-geometry +${box_left}+${box_top} \
+		-compose over -composite \
+		bmp:${temp_image}
+	set +x
+	if (( i < n_days )); then
+		line_y=$(echo "scale=5; ($i + 1) * (600 / $n_days)" | bc)
+		convert \
+			"${temp_image}" \
+			+antialias \
+			-size 600x448 \
+			xc:transparent \
+			-stroke ${foreground_color} \
+			-fill none \
+			-draw "stroke-dasharray 1,8,1,8,1,8,1,8 line ${line_y},447 ${line_y},410" \
+			-compose over -composite \
+			bmp:${temp_image}
+	fi
+done
 
 # Invert if night.
 sunrise_seconds=$(date --date=$(echo ${openmeteo_json} | jq -r '.daily.sunrise[0]') +'%s')
